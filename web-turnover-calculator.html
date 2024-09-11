@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Employee Turnover Cost Calculator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: inline-block;
+            width: 250px;
+        }
+        input {
+            width: 100px;
+        }
+        button {
+            margin-top: 20px;
+            margin-right: 10px;
+        }
+        #results {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        #employeeInputs {
+            margin-top: 20px;
+        }
+        #chartContainer {
+            margin-top: 30px;
+            height: 400px;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 300px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -150px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Advanced Employee Turnover Cost Calculator</h1>
+    <div id="inputs">
+        <div class="input-group">
+            <label for="totalEmployees">Total Employees:</label>
+            <input type="number" id="totalEmployees" min="1">
+        </div>
+        <div class="input-group">
+            <label for="employeeCount">Number of Leaving Employees:</label>
+            <input type="number" id="employeeCount" min="1" value="1">
+        </div>
+        <button onclick="generateEmployeeInputs()">Generate Employee Inputs</button>
+    </div>
+    <div id="employeeInputs"></div>
+    <button onclick="calculate()">Calculate</button>
+    <button id="downloadCSV" onclick="downloadCSV()" style="display: none;">Download CSV</button>
+    <div id="results">
+        <p>Total Turnover Cost: $<span id="totalCost">0.00</span></p>
+        <p>Turnover Rate: <span id="turnoverRate">0.00</span>%</p>
+    </div>
+    <div id="chartContainer">
+        <canvas id="costChart"></canvas>
+    </div>
+
+    <script>
+        let chart;
+        let calculatedData;
+
+        function generateEmployeeInputs() {
+            const count = parseInt(document.getElementById('employeeCount').value);
+            const container = document.getElementById('employeeInputs');
+            container.innerHTML = '';
+
+            for (let i = 1; i <= count; i++) {
+                container.innerHTML += `
+                    <h3>Employee ${i}</h3>
+                    <div class="input-group">
+                        <label for="severancePay${i}">Severance Pay ($):</label>
+                        <input type="number" id="severancePay${i}" min="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="equipmentFees${i}">Equipment Fees ($):</label>
+                        <input type="number" id="equipmentFees${i}" min="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="shippingCosts${i}">Shipping Costs ($):</label>
+                        <input type="number" id="shippingCosts${i}" min="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="jobPostFees${i}">Job Post Fees ($):</label>
+                        <input type="number" id="jobPostFees${i}" min="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="interviewTravel${i}">Interview Travel Expenses ($):</label>
+                        <input type="number" id="interviewTravel${i}" min="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="signingBonuses${i}">Signing Bonuses ($):</label>
+                        <input type="number" id="signingBonuses${i}" min="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="relocationPackages${i}">Relocation Packages ($):</label>
+                        <input type="number" id="relocationPackages${i}" min="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="jobTraining${i}">Job-specific Training ($):</label>
+                        <input type="number" id="jobTraining${i}" min="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="daysNotWorked${i}">Days Not Worked (Paid):</label>
+                        <input type="number" id="daysNotWorked${i}" min="0">
+                    </div>
+                    <div class="input-group">
+                        <label for="dailyRate${i}">Daily Pay Rate ($):</label>
+                        <input type="number" id="dailyRate${i}" min="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="managementTime${i}" class="tooltip">Management Time on Turnover (Hours):
+                            <span class="tooltiptext">Enter the total hours spent by management on tasks related to this employee's departure and replacement. This includes time spent on exit interviews, hiring process, onboarding, etc.</span>
+                        </label>
+                        <input type="number" id="managementTime${i}" min="0" step="0.1">
+                    </div>
+                    <div class="input-group">
+                        <label for="managementRate${i}">Management Hourly Rate ($):</label>
+                        <input type="number" id="managementRate${i}" min="0" step="0.01">
+                    </div>
+                `;
+            }
+        }
+
+        function calculate() {
+            const employeeCount = parseInt(document.getElementById('employeeCount').value);
+            const totalEmployees = parseInt(document.getElementById('totalEmployees').value);
+            let totalCost = 0;
+            const costBreakdown = {
+                severancePay: 0,
+                equipmentFees: 0,
+                shippingCosts: 0,
+                jobPostFees: 0,
+                interviewTravel: 0,
+                signingBonuses: 0,
+                relocationPackages: 0,
+                jobTraining: 0,
+                unpaidWork: 0,
+                managementTime: 0
+            };
+
+            calculatedData = [];
+
+            for (let i = 1; i <= employeeCount; i++) {
+                const employeeData = {
+                    employee: i,
+                    severancePay: 0,
+                    equipmentFees: 0,
+                    shippingCosts: 0,
+                    jobPostFees: 0,
+                    interviewTravel: 0,
+                    signingBonuses: 0,
+                    relocationPackages: 0,
+                    jobTraining: 0,
+                    unpaidWork: 0,
+                    managementTime: 0
+                };
+
+                const inputs = [
+                    'severancePay', 'equipmentFees', 'shippingCosts', 'jobPostFees',
+                    'interviewTravel', 'signingBonuses', 'relocationPackages', 'jobTraining'
+                ];
+                
+                inputs.forEach(input => {
+                    const value = Number(document.getElementById(`${input}${i}`).value || 0);
+                    totalCost += value;
+                    costBreakdown[input] += value;
+                    employeeData[input] = value;
+                });
+                
+                const daysNotWorked = Number(document.getElementById(`daysNotWorked${i}`).value || 0);
+                const dailyRate = Number(document.getElementById(`dailyRate${i}`).value || 0);
+                const unpaidWorkCost = daysNotWorked * dailyRate;
+                totalCost += unpaidWorkCost;
+                costBreakdown.unpaidWork += unpaidWorkCost;
+                employeeData.unpaidWork = unpaidWorkCost;
+                
+                const managementTime = Number(document.getElementById(`managementTime${i}`).value || 0);
+                const managementRate = Number(document.getElementById(`managementRate${i}`).value || 0);
+                const managementCost = managementTime * managementRate;
+                totalCost += managementCost;
+                costBreakdown.managementTime += managementCost;
+                employeeData.managementTime = managementCost;
+
+                calculatedData.push(employeeData);
+            }
+            
+            const turnoverRate = totalEmployees ? (employeeCount / totalEmployees) * 100 : 0;
+            
+            document.getElementById('totalCost').textContent = totalCost.toFixed(2);
+            document.getElementById('turnoverRate').textContent = turnoverRate.toFixed(2);
+
+            updateChart(costBreakdown);
+
+            // Show the download button after calculation
+            document.getElementById('downloadCSV').style.display = 'inline-block';
+        }
+
+        function updateChart(costBreakdown) {
+            const ctx = document.getElementById('costChart').getContext('2d');
+            
+            if (chart) {
+                chart.destroy();
+            }
+            
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(costBreakdown).map(key => key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())),
+                    datasets: [{
+                        label: 'Cost Breakdown',
+                        data: Object.values(costBreakdown),
+                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Cost ($)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Turnover Cost Breakdown'
+                        }
+                    }
+                }
+            });
+        }
+
+        function downloadCSV() {
+            if (!calculatedData) {
+                alert('Please calculate the data first.');
+                return;
+            }
+
+            const totalEmployees = document.getElementById('totalEmployees').value;
+            const totalCost = document.getElementById('totalCost').textContent;
+            const turnoverRate = document.getElementById('turnoverRate').textContent;
+
+            let csv = 'data:text/csv;charset=utf-8,';
+            csv += 'Employee,Severance Pay,Equipment Fees,Shipping Costs,Job Post Fees,Interview Travel,Signing Bonuses,Relocation Packages,Job Training,Unpaid Work,Management Time\n';
+
+            calculatedData.forEach(row => {
+                csv += Object.values(row).join(',') + '\n';
+            });
+
+            csv += `\nTotal Employees,${totalEmployees}\n`;
+            csv += `Total Turnover Cost,$${totalCost}\n`;
+            csv += `Turnover Rate,${turnoverRate}%\n`;
+
+            const encodedUri = encodeURI(csv);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', 'turnover_cost_data.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Initialize with one employee input
+        generateEmployeeInputs();
+    </script>
+</body>
+</html>
